@@ -16,7 +16,7 @@ willamette.upper.esc<-read_xls(path="data/Input_winter_steelhead_new.xls", sheet
 filter(Population_Name == "Upper Willamette") %>% 
   select(Year,Population_Name,Escapement) %>% 
   mutate(across(c(Year,Escapement),as.integer))
-##estimates of main stem columbia commercial and sport harvest and post-release mortality on theaggregate run
+##estimates of main stem columbia commercial and sport harvest and post-release mortality on the aggregate run
 mainstem.morts<-read_xls(path="data/Input_winter_steelhead_new.xls", sheet = "FishingMortality_Mainstem") %>% as_tibble()
 ## harvest rates used every year, established at some point based on expert judgement I presume.
 trib.mort.rates<-read_xls(path="data/Input_winter_steelhead_new.xls", sheet = "HarvestMortRate_Tributaries") %>% as_tibble()
@@ -53,31 +53,47 @@ wa.esc.df2<-wa.esc %>%
   #pops in list
   filter(population_name%in%population.list,
          #escapement not pHOS
-                        !grepl("pHOS",escapement_methodology) ) %>% #looking for multiple entries per year x populations
-  group_by(year,population_name,sub_population_name) %>%
-  mutate(n=n()) %>%
+                        !grepl("pHOS",escapement_methodology), 
   #deal with some cases where more than one entry for a year x population
-  filter(!(n>1&escapement_methodology%in%c("NOSA TSAEJ","Trap Count (Natural-Origin)")),
-          !(population_name%in%c("North Fork Toutle Winter Steelhead","Elochoman-Skamokawa Winter Steelhead","Mill-Abernathy-Germany Creeks Winter Steelhead","Grays-Chinook Winter Steelhead")&
-              (is.na(sub_population_name)|sub_population_name=="")),#using green and trap counts indvidually
-         !(population_name=="Upper Gorge (Columbia) Winter Steelhead"&(is.na(sub_population_name)|sub_population_name=="")),#using Wind river, which is the same as upper Gorge
-         
-         !(population_name=="Klickitat Summer and Winter Steelhead"&sub_population_name!="Klickitat Winter Steelhead"
-         )) %>% 
+    ##get rid of duplicate kalamas selecting total spawners above and below falls
+    !(population_name=="Kalama Winter Steelhead"&calculation_type!="NA"),
+  ##North Fork Toutle had no methods descriptions so we choose the largest value (equal to the sum of the two smaller values, just like for the Kalama, which had methods description)
+    !(population_name=="North Fork Toutle Winter Steelhead"&nchar(sub_population_name)<1),
+  
+  # For several populations we are using TASEJ (excluding jacks) instead of TSAIJ (including jacks - but the numbers are the same) and NOSAEJ (natural-origin only)
+  !(population_name%in%c("Elochoman-Skamokawa Winter Steelhead","Grays-Chinook Winter Steelhead","Lower Cowlitz Winter Steelhead","Mill-Abernathy-Germany Creeks Winter Steelhead","Tilton Winter Steelhead","Upper Cowlitz and Cispus Winter Steelhead") &data_type!="TSAEJ"),
+  
+  # Using Total Escapement instead of Trap Count
+  !(population_name=="Upper Gorge (Columbia) Winter Steelhead"&escapement_methodology!="Total Escapement"),
+  
+  #
+  !(population_name=="Klickitat Summer and Winter Steelhead"&sub_population_name!="Klickitat Winter Steelhead")
+  
+  
+  ) %>%
+#get rid of any duplicate rows
+    distinct() %>% 
+  
+  #looking for multiple entries per year x populations
+  group_by(year,population_name,sub_population_name) %>%
+  mutate(n=n()) %>% arrange(population_name,year) %>% 
+  arrange(desc(n)) %>% 
+  
   mutate(
          Population=ifelse(sub_population_name=="",population_name,sub_population_name),
          Population=sub(" Winter Steelhead","",Population))  %>% 
   #drop missing values
   filter(!is.na(abundance_qty)) %>% 
-  #add 2022 Kalama (Steve Grey pers. correspondence)
-  bind_rows(
-    filter(.,population_name == "Kalama Winter Steelhead"&year==2021) %>% mutate(year="2022",abundance_qty="881")
-  ) %>% 
+  # #add 2022 Kalama (Steve Grey pers. correspondence)
+  # bind_rows(
+  #   filter(.,population_name == "Kalama Winter Steelhead"&year==2021) %>% mutate(year="2022",abundance_qty="881")
+  # ) %>% 
   distinct() %>% #get rid of any duplicates
     ungroup %>% 
   # columns needed for analysis: year, population, escapement
 select(Year=year,Population_Name=Population,Escapement=abundance_qty) %>% 
-  mutate(across(c(Year,Escapement),as.integer))
+  mutate(across(c(Year,Escapement),as.integer),
+         source="WA_SPI")
   
 
 # OR Escapements 
@@ -100,14 +116,15 @@ or.esc.df<-nosa_df$records %>% as_tibble() %>%
     
   ) %>% 
   select(Year=spawningyear,Population_Name=commonpopname,Escapement=nosaij) %>% 
-  mutate(Escapement=as.numeric(Escapement))
+  mutate(Escapement=as.numeric(Escapement)) %>% 
+  mutate(source="streamnet")
 rm(nosa_df)
 
 ## populations to exclude from analysis (some because upstream of Wilamtter Falls, which we are using counts from, and Youngs Bay probably because of short time series length)
 pop.exclude<-list("Calapooia River", "Cedar Creek", "Molalla River", "North Santiam River", "South Santiam River", "Youngs Bay")
 
 # Combined WA and OR escapements
-all.esc.df<-bind_rows(wa.esc.df2, or.esc.df,willamette.upper.esc) %>% arrange(Population_Name, Year) %>% filter(!Population_Name %in% pop.exclude) %>% 
+all.esc.df<-bind_rows(wa.esc.df2, or.esc.df,willamette.upper.esc %>% mutate(source="Willamette_falls")) %>% arrange(Population_Name, Year) %>% filter(!Population_Name %in% pop.exclude) %>% 
   group_by(Population_Name) %>%
   rename(Population_Escapement=Escapement) %>% 
   arrange(Population_Name, Year) %>% 
@@ -116,9 +133,16 @@ all.esc.df<-bind_rows(wa.esc.df2, or.esc.df,willamette.upper.esc) %>% arrange(Po
 
 #add tributary harvest rates (table of values originating from god knows where)
 new.df<-all.esc.df %>% left_join(trib.mort.rates) %>% 
-  filter(Year>=2001) %>% #years with more complete data
+  # filter(Year>=2001) %>% #years with more complete data
 #expand escapement to account for tributary harvest
   mutate(Population_Escapement=Population_Escapement/(1-TribMortRate))
+
+
+new.df %>% group_by(Population_Name,source) %>% 
+  summarize(min_year=min(Year),
+            max_year=max(Year),
+            n_years=n(),
+            mean_esc=round(mean(Population_Escapement,na.rm=T),2)) %>%View()# write_csv(file="winter_stlhd.csv")
 
 
 
@@ -155,7 +179,7 @@ mod_states<-exp(fit1$states*att_Z$`scaled:scale`+att_Z$`scaled:center`)
 mod_obs<- exp(fit1$ytT*att_Z$`scaled:scale`+att_Z$`scaled:center`)
 
 ## one-year-ahead forecast
-mod_forecast<-(MARSS::forecast.marssMLE(fit1,h=1))$pred %>% filter(t==23) %>% pull(estimate) %>% `*`(att_Z$`scaled:scale`) %>% `+`(att_Z$`scaled:center`) %>% exp
+mod_forecast<-(MARSS::forecast.marssMLE(fit1,h=1))$pred %>% filter(t==23) %>% pull(estimate) %>% `*`(att_Z$`scaled:scale`) %>% `+`(att_Z$`scaled:center`) %>% exp %>% sum()
 
 #mainstem harvest
 mainstem_harvest<-mainstem.morts %>% group_by(Year) %>% summarise(morts=sum(Fishing_Mortality)) 
@@ -182,3 +206,25 @@ write_csv(CR_return,file="Winter_steelhead_Columbia.csv")
 # plot(colSums(exp(mod_obs)))
 # plot(colSums(exp(mod_states)))
 
+
+
+salm<-fpcDamCounts::fpc_runsum("BON","2000-01-01","2023-12-31","salmon")
+
+sthd<-salm %>% mutate(year=lubridate::year(CountDate),month=lubridate::month(CountDate),year=ifelse(month>5,year+1,year)) %>% filter(month%in%c(11:12,1:3)) %>% group_by(year) %>% summarize(n=sum(AllSteelhead),unclipped=sum(UnClpSteelhead)) 
+
+
+print(sthd,n=Inf)
+sthd %>% filter(between(year,2014,2023)) %>% mutate(rank(n),rank(unclipped))
+
+
+sthd<-salm %>% mutate(year=lubridate::year(CountDate),month=lubridate::month(CountDate)) %>% filter(between(month,4,6)) %>% group_by(year) %>% summarize(n=sum(AllSteelhead),unclipped=sum(UnClpSteelhead))%>% filter(between(year,2014,2023)) %>% mutate(rank(n),rank(unclipped))
+
+
+
+sthd<-salm %>% mutate(year=lubridate::year(CountDate),month=lubridate::month(CountDate),mday=lubridate::mday(CountDate)) %>% filter(month==7|(month==6&mday>=16)) %>% group_by(year) %>% summarize(n=sum(AdultChinook),jack=sum(JackChinook))%>% filter(between(year,2014,2023)) %>% mutate(rank(n),rank(jack))
+
+
+salm %>% mutate(year=lubridate::year(CountDate),month=lubridate::month(CountDate),mday=lubridate::mday(CountDate)) %>% group_by(year) %>% summarize(n=sum(Sockeye))%>% filter(between(year,2014,2023)) %>% mutate(rank(n))
+
+
+fpcDamCounts::fpc_runsum("RIS","2022-01-01","2023-12-31","salmon")%>% mutate(year=lubridate::year(CountDate),month=lubridate::month(CountDate),mday=lubridate::mday(CountDate)) %>% group_by(year) %>% summarize(n=sum(Sockeye))%>% filter(between(year,2014,2023)) %>% mutate(rank(n))
