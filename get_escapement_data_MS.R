@@ -148,6 +148,7 @@ new.df %>% group_by(Population_Name,source) %>%
 
 #pivot wider with column for each population for MARSS modeling
 wide_df.ts<-new.df %>% 
+  filter(Population_Name%in%c("Clackamas River","Kalama","Sandy River")) %>% 
   dplyr::select(Year,Population_Name,Population_Escapement) %>% pivot_wider(names_from = Population_Name,values_from = Population_Escapement) %>% arrange(Year) %>% 
   #drop Year column and log for input into MARSS
   select(-1) %>% log
@@ -162,11 +163,76 @@ att_Z<-attributes(test.ts_z)#save means and SDs for back-transform
 
 #fitt MARSS model to log escapement
 ## I explored some different specifications and the below one had most support based on AICc
+
+#trend
+U=c("unequal","equal","zero")
+#autocorrellation
+B=c("diagonal and equal","diagonal and unequal","identity")
+#process error
+Q=c( "diagonal and unequal", "diagonal and equal", "equalvarcov")
+#Observation error
+R=c("diagonal and equal","diagonal and unequal")
+
+
+
+
+cntl.list <- list( maxit = 2000)
+
+out_list<-list()
+model.data <- data.frame(stringsAsFactors = FALSE)
+# fit models & store results
+for (b in B) {
+  for (q in Q) {
+    for(u in U){
+      for(r in R){
+      if(!(q=="zero" & b!="identity")){  
+        model <- list(R = r, B=b, Q=q, U = u)
+        kemz <- MARSS::MARSS(t(test.ts_z),
+                             model = model, control = cntl.list)
+        model.data <- rbind(
+          model.data,
+          data.frame(
+            R=r,
+            B = b,
+            Q = q,
+            U= u,
+            logLik = kemz$logLik,
+            K = kemz$num.params,
+            AICc = kemz$AICc,
+            stringsAsFactors = FALSE
+          )
+        )
+        assign(paste("kemz", b,q,u,r,sep = "."), kemz)
+        out_list[[paste("kemz", b,q,u,r, sep = ".")]]<-kemz
+      } # end b loop
+    } # end q loop
+  } # end of U loop
+}
+}
+
+model.data %>% arrange(AICc)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 library(MARSS)
 model=list(
   Q="equalvarcov",
   # R="diagonal and equal", #default, but getting error when explicity specifying it
   # R="diagonal and unequal",
+  B="diagonal and unequal",
   U="unequal")
 fit1=MARSS(t(test.ts_z),	model=model,control = list(maxit=2500))
 
