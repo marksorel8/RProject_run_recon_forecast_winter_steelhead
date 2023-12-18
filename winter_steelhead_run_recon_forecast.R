@@ -35,5 +35,10 @@ RMR %>% tail(5) %>% summarize(mean(runsize_obs))
 RMR %>% tail(10) %>% summarize(mean(runsize_obs))
 
 #fit ARIMA model to RMR time series
-fit<-forecast::auto.arima(RMR$runsize_obs)
+fit<-forecast::auto.arima(log(RMR$runsize_obs))
+#forecast
+exp(forecast(fit,h=1)$mean)
+#plot on log scale
 plot(forecast(fit,h=1))
+
+     
