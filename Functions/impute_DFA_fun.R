@@ -77,7 +77,7 @@ p2 <- ggplot(data = long_counts) + geom_line(aes(Year, Counts)) + geom_point(aes
                                                                        Counts,col=interpolated))  +
   
   facet_wrap(~Population,scale="free_y") + 
-  xlab("") + ylab("Counts")+ggplot2::scale_color_manual(values=c("black","red"))
+  xlab("") + ylab("Counts")+ggplot2::scale_color_manual(values=c("black","red"))+theme(legend.position = "top")
 
 
 rollup<-long_counts %>% group_by(Year) %>% summarize(Counts=sum(Counts),
