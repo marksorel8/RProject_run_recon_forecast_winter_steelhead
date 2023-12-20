@@ -31,7 +31,7 @@ fit<-forecast::auto.arima(log(RMR$runsize_obs))
 Steve Gray emailed me some 2023 estimates today so I was able to run the code to impute the missing estimates and calculate the river mouth run size, which is what we need for the JSR. The River mouth run size is just the sum of all of the escapements plus the mainstem harvest.  
 
 
-Plot of escapement estimates (black points) and imputed estimates (red points). I used a DFW model with 3 latent states fit in MARSS to do the impuation. The idea behind it is that it accounts for the covariance across populations but without having to fit a ful covariance matrix, which has a lot of parameters and is hard to estimate because many of our population time series are short.  
+Plot of escapement estimates (black points) and imputed estimates (red points). I used a DFA model with 3 latent states fit in MARSS to do the imputation. The idea behind it is that it accounts for the covariance among populations without having to fit a full covariance matrix, which has a lot of parameters and is hard to estimate when our population time series are short.  
 ```{r echo=FALSE, fig.height=15, message=FALSE, warning=FALSE, out.width="100%"}
 #plot of imputed values
 imputes$p2
