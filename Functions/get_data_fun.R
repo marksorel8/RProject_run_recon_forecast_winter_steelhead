@@ -14,7 +14,7 @@ library('tidyverse')
 library("forecast")
 
 get_data_fun<-function(data_start_year = 0,#exclude years before this
-                       data_end_year=2022#exclude years after this
+                       data_end_year=2023#exclude years after this
                        ){
 # Load mainsteam harvest data, tributary release mortality rates, and miscellaneous escapement data
 ##Wilamette Falls counts - painstakingly hand entered from PDF tables posted at https://myodfw.com/willamette-falls-fish-counts
@@ -67,7 +67,9 @@ wa.esc.df2<-wa.esc %>%
          !(population_name=="North Fork Toutle Winter Steelhead"&nchar(sub_population_name)<1),
          
          # For several populations we are using TASEJ (excluding jacks) instead of TSAIJ (including jacks - but the numbers are the same) and NOSAEJ (natural-origin only)
-         !(population_name%in%c("Elochoman-Skamokawa Winter Steelhead","Grays-Chinook Winter Steelhead","Lower Cowlitz Winter Steelhead","Mill-Abernathy-Germany Creeks Winter Steelhead","Tilton Winter Steelhead","Upper Cowlitz and Cispus Winter Steelhead") &data_type!="TSAEJ"),
+         !(population_name%in%c("Elochoman-Skamokawa Winter Steelhead","Grays-Chinook Winter Steelhead","Lower Cowlitz Winter Steelhead","Mill-Abernathy-Germany Creeks Winter Steelhead","Tilton Winter Steelhead","Upper Cowlitz and Cispus Winter Steelhead") &data_type!="TSAEJ")|
+           #after 2021, mill, abernath and Germany were entered seperately and the total was not entered
+           population_name=="Mill-Abernathy-Germany Creeks Winter Steelhead"&year>2021,
          
          # Using Total Escapement instead of Trap Count
          !(population_name=="Upper Gorge (Columbia) Winter Steelhead"&escapement_methodology!="Total Escapement"),
@@ -81,10 +83,13 @@ wa.esc.df2<-wa.esc %>%
   distinct() %>% 
   
   #looking for multiple entries per year x populations
-  group_by(year,population_name,sub_population_name) %>%
+  group_by(year,population_name) %>%
   mutate(n=n()) %>% arrange(population_name,year) %>% 
   arrange(desc(n)) %>% 
-  
+  #sum mill, abernathy and Germany
+  mutate(sub_population_name=ifelse(population_name=="Mill-Abernathy-Germany Creeks Winter Steelhead"&year>2021,"",sub_population_name)) %>% 
+  group_by(population_name,sub_population_name,year) %>% 
+  summarize(abundance_qty=sum(as.numeric(abundance_qty))) %>% 
   mutate(
     Population=ifelse(sub_population_name=="",population_name,sub_population_name),
     Population=sub(" Winter Steelhead","",Population))  %>% 
@@ -130,7 +135,10 @@ rm(nosa_df)
 pop.exclude<-list("Calapooia River", "Cedar Creek", "Molalla River", "North Santiam River", "South Santiam River", "Youngs Bay")
 
 # Combined WA and OR escapements
-all.esc.df<-bind_rows(wa.esc.df2, or.esc.df,willamette.upper.esc %>% mutate(source="Willamette_falls")) %>% arrange(Population_Name, Year) %>% filter(!Population_Name %in% pop.exclude) %>% 
+all.esc.df<-bind_rows(wa.esc.df2, or.esc.df,willamette.upper.esc %>% mutate(source="Willamette_falls")) %>% 
+  ##add 2023 and lower george data from spreadsheet provided by steve Gray
+  bind_rows(readxl::read_xlsx("data/Copy of 2023_Wild Winter STHD_All_Sorel.xlsx",sheet=3)) %>% 
+ arrange(Population_Name, Year) %>% filter(!Population_Name %in% pop.exclude) %>% 
   group_by(Population_Name) %>%
   rename(Population_Escapement=Escapement) %>% 
   arrange(Population_Name, Year) %>% 
@@ -143,7 +151,9 @@ all.esc.df<-bind_rows(wa.esc.df2, or.esc.df,willamette.upper.esc %>% mutate(sour
 new.df<-all.esc.df %>% left_join(trib.mort.rates) %>% 
   filter(between(Year,data_start_year,data_end_year)) %>% 
   #expand escapement to account for tributary harvest
-  mutate(Population_Escapement=Population_Escapement/(1-TribMortRate)) %>% filter(Population_Name!="Lower Gorge (Columbia)")
+  mutate(Population_Escapement=Population_Escapement/(1-TribMortRate)) %>% 
+  mutate(Population_Escapement=ifelse(Population_Escapement==0,1,Population_Escapement))
+# %>% filter(Population_Name!="Lower Gorge (Columbia)")
 
 
 data_summary<-new.df  %>% group_by(Population_Name) %>% 

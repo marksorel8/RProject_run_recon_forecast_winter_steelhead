@@ -2,7 +2,7 @@ wd_functions<-"functions"
 sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
 
 #pull and munge data 
-dat<-get_data_fun(data_start_year = 0,data_end_year=2022)
+dat<-get_data_fun(data_start_year = 0,data_end_year=2023)
 
 #plot data
 dat$ts_plot
