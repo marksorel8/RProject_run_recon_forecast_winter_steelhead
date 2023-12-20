@@ -29,7 +29,7 @@ View(RMR)
 
 
 #calculated 5-year average river mouth run size
-RMR %>% tail(5) %>% summarize(mean(runsize_obs))
+RMR %>% tail(5) %>% summarize(f=round(mean(runsize_obs),-2))  %>% pull(f)
 
 #calculated 10-year average river mouth run size
 RMR %>% tail(10) %>% summarize(mean(runsize_obs))

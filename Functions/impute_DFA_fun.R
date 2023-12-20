@@ -76,8 +76,8 @@ long_counts<-pivot_longer(as_tibble(cnts) %>% mutate(Year=new.df$Year %>%  uniqu
 p2 <- ggplot(data = long_counts) + geom_line(aes(Year, Counts)) + geom_point(aes(Year, 
                                                                        Counts,col=interpolated))  +
   
-  facet_wrap(~Population,scale="free_y") + 
-  xlab("") + ylab("Counts")+ggplot2::scale_color_manual(values=c("black","red"))+theme(legend.position = "top")
+  facet_wrap(~Population,scale="free_y",ncol=3) + 
+  xlab("") + ylab("Counts")+ggplot2::scale_color_manual(values=c("black","red"))+theme(legend.position = "top")+xlim(2000,2023)
 
 
 rollup<-long_counts %>% group_by(Year) %>% summarize(Counts=sum(Counts),
