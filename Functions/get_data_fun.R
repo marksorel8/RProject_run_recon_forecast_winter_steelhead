@@ -1,17 +1,7 @@
 #function to read data from various sources. returns a list with several data objects
 
 
-library("RSocrata")
-library("tidyjson")
-library("jsonlite")
-library("tidyr")
-library("dplyr")
-library("ggplot2")
-library("readxl")
-library('lubridate')
-library('purrr')
-library('tidyverse')
-library("forecast")
+
 
 get_data_fun<-function(data_start_year = 0,#exclude years before this
                        data_end_year=2023#exclude years after this
@@ -23,7 +13,7 @@ willamette.upper.esc<-read_xls(path="data/Input_winter_steelhead_new.xls", sheet
   select(Year,Population_Name,Escapement) %>% 
   mutate(across(c(Year,Escapement),as.integer))
 ##estimates of main stem columbia commercial and sport harvest and post-release mortality on the aggregate run
-mainstem.morts<-read_xls(path="data/Input_winter_steelhead_new.xls", sheet = "FishingMortality_Mainstem") %>% as_tibble()
+mainstem.morts<-read_xls(path="data/Input_winter_steelhead_new.xls", sheet = "FishingMortality_Mainstem") %>% as_tibble()%>% group_by(Year) %>% summarize(morts=sum(Fishing_Mortality))
 ## harvest rates used every year, established at some point based on expert judgement I presume.
 trib.mort.rates<-read_xls(path="data/Input_winter_steelhead_new.xls", sheet = "HarvestMortRate_Tributaries") %>% as_tibble()
 
@@ -68,8 +58,9 @@ wa.esc.df2<-wa.esc %>%
          
          # For several populations we are using TASEJ (excluding jacks) instead of TSAIJ (including jacks - but the numbers are the same) and NOSAEJ (natural-origin only)
          !(population_name%in%c("Elochoman-Skamokawa Winter Steelhead","Grays-Chinook Winter Steelhead","Lower Cowlitz Winter Steelhead","Mill-Abernathy-Germany Creeks Winter Steelhead","Tilton Winter Steelhead","Upper Cowlitz and Cispus Winter Steelhead") &data_type!="TSAEJ")|
-           #after 2021, mill, abernath and Germany were entered seperately and the total was not entered
-           population_name=="Mill-Abernathy-Germany Creeks Winter Steelhead"&year>2021,
+           #after 2021, sub-populations of these populations were entered separately and the total was not entered (or data_type changed for Grays)
+           population_name%in%c("Mill-Abernathy-Germany Creeks Winter Steelhead",
+                                "Elochoman-Skamokawa Winter Steelhead","Grays-Chinook Winter Steelhead")&year>2021,
          
          # Using Total Escapement instead of Trap Count
          !(population_name=="Upper Gorge (Columbia) Winter Steelhead"&escapement_methodology!="Total Escapement"),
@@ -86,8 +77,12 @@ wa.esc.df2<-wa.esc %>%
   group_by(year,population_name) %>%
   mutate(n=n()) %>% arrange(population_name,year) %>% 
   arrange(desc(n)) %>% 
-  #sum mill, abernathy and Germany
-  mutate(sub_population_name=ifelse(population_name=="Mill-Abernathy-Germany Creeks Winter Steelhead"&year>2021,"",sub_population_name)) %>% 
+  #sum mill, abernathy and Germany, get rid of sub-population names that mess up the flow
+  mutate(sub_population_name=ifelse(population_name%in%c("Mill-Abernathy-Germany Creeks Winter Steelhead",
+                                                         "Elochoman-Skamokawa Winter Steelhead","Grays-Chinook Winter Steelhead")&year>2021,"",sub_population_name),
+         #fix data error (pers com. Stevee Gray)
+         abundance_qty=ifelse(population_name=="East Fork Lewis Winter Steelhead"&year==2023,"328",abundance_qty)
+         ) %>% 
   group_by(population_name,sub_population_name,year) %>% 
   summarize(abundance_qty=sum(as.numeric(abundance_qty))) %>% 
   mutate(

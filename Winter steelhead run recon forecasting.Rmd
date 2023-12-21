@@ -8,6 +8,18 @@ date: "2023-12-20"
 
 
 ```{r analysis, include=FALSE}
+
+library("RSocrata")
+library("tidyjson")
+library("jsonlite")
+library("tidyr")
+library("dplyr")
+library("ggplot2")
+library("readxl")
+library('lubridate')
+library('purrr')
+library('tidyverse')
+library("forecast")
 #source functions
 wd_functions<-"functions"
 sapply(FUN = source, paste(wd_functions, list.files(wd_functions), sep="/"))
@@ -19,16 +31,16 @@ dat<-get_data_fun(data_start_year = 0,data_end_year=2023)
 imputes<-impute_DFA_fun(dat$new.df)
 
 #calculate River Mouth Run sizes
-RMR<-imputes$rollup %>% 
-  left_join(dat$mainstem.morts %>% group_by(Year) %>% summarize(morts=sum(Fishing_Mortality))) %>% 
-  mutate(runsize_obs=Counts +morts) 
+RMR<-imputes$rollup %>%
+  left_join(dat$mainstem.morts ) %>%
+  mutate(runsize_obs=Counts +morts)
 
 #fit ARIMA model to RMR time series
 fit<-forecast::auto.arima(log(RMR$runsize_obs))
 ```
   
     
-Steve Gray emailed me some 2023 estimates today so I was able to run the code to impute the missing estimates and calculate the river mouth run size, which is what we need for the JSR. The River mouth run size is just the sum of all of the escapements plus the mainstem harvest.  
+I was able to run the code to impute missing escapement estimates and calculate the river mouth run size, which is what we need for the JSR. The River mouth run size is just the sum of all of the escapements (expanded based on tributary harvest rates) plus the mainstem harvest.  
 
 
 Plot of escapement estimates (black points) and imputed estimates (red points). I used a DFA model with 3 latent states fit in MARSS to do the imputation. The idea behind it is that it accounts for the covariance among populations without having to fit a full covariance matrix, which has a lot of parameters and is hard to estimate when our population time series are short.  
@@ -51,7 +63,7 @@ imputes$p3
 kableExtra::kable(RMR %>% tail() %>% mutate(across(c(Counts,runsize_obs),round)),col.names=c("Year","Escpmnt","n msng","Mstm hrvst","RM Run"),table.attr = "style='width:150%;'") %>%  kableExtra::kable_styling()
 ```
 
-Table of estimated river mouth run sizes over last 6 years.  
+Table of estimated river mouth run sizes over last 6 years.
 
 We could do a five-year average of the river mouth run size (2019-2023) for the 2024 forecast. That would be equal to `r RMR %>% tail(5) %>% summarize(f=round(mean(runsize_obs),-2))  %>% pull(f)%>% format(scientific=F)`. A ten-year average would be `r RMR %>% tail(10) %>% summarize(f=round(mean(runsize_obs),-2))  %>% pull(f)%>% format(scientific=F)`, but I think I would prefer the 5-year average. If we used auto-arima to generate a forecast it would be `r round(exp(forecast(fit,h=1)$mean[1]),-2) %>% format(scientific=F)`.
 
